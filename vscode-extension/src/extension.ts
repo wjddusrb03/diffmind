@@ -170,14 +170,19 @@ async function doReview(staged: boolean) {
             workspacePath
         );
 
-        // Try to parse JSON output
+        // Try to parse JSON output (model loading logs may precede the JSON)
         let result: DiffMindReviewResult;
         try {
-            result = JSON.parse(output.trim());
+            const jsonMatch = output.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                throw new Error('No JSON found');
+            }
+            result = JSON.parse(jsonMatch[0]);
         } catch {
             // Not JSON - might be "No changes to review."
             outputChannel.appendLine(output);
-            vscode.window.showInformationMessage(`DiffMind: ${output.trim()}`);
+            const cleanMsg = output.replace(/^[\s\S]*?(No changes|No diff|Error)/m, '$1').trim();
+            vscode.window.showInformationMessage(`DiffMind: ${cleanMsg || output.trim().slice(-100)}`);
             setStatusBar('ready');
             return;
         }
@@ -204,17 +209,14 @@ async function doReview(staged: boolean) {
             (highCount > 0 ? ` (${highCount} HIGH)` : '') +
             (medCount > 0 ? ` (${medCount} MEDIUM)` : '');
 
-        if (highCount > 0) {
-            const action = await vscode.window.showWarningMessage(
-                msg, 'Show Details', 'AI Review'
-            );
-            if (action === 'Show Details') {
-                showReviewPanel(result);
-            } else if (action === 'AI Review') {
-                cmdAIReview();
-            }
-        } else {
-            vscode.window.showInformationMessage(msg);
+        // Always show action buttons so user can see details
+        const action = await vscode.window.showWarningMessage(
+            msg, 'Show Details', 'Show Problems'
+        );
+        if (action === 'Show Details') {
+            showReviewPanel(result);
+        } else if (action === 'Show Problems') {
+            vscode.commands.executeCommand('workbench.actions.view.problems');
         }
 
         setStatusBar('warnings', result.warning_count);
@@ -332,19 +334,16 @@ function cmdToggleAutoReview() {
 // ── Diagnostics ──────────────────────────────────────────────────
 
 function applyDiagnostics(warnings: DiffMindWarning[], workspacePath: string) {
-    const fileMap = new Map<string, vscode.Diagnostic[]>();
+    // Build diagnostics per file
+    const allDiags: { uri: vscode.Uri; diag: vscode.Diagnostic }[] = [];
 
     for (const w of warnings) {
-        const filePath = path.isAbsolute(w.current_file)
-            ? w.current_file
-            : path.join(workspacePath, w.current_file);
-
-        const uri = vscode.Uri.file(filePath);
-        const key = uri.fsPath;
-
-        if (!fileMap.has(key)) {
-            fileMap.set(key, []);
+        // Resolve file path
+        let filePath = w.current_file;
+        if (!path.isAbsolute(filePath)) {
+            filePath = path.join(workspacePath, filePath);
         }
+        filePath = path.normalize(filePath);
 
         const severity = w.risk_level === 'HIGH'
             ? vscode.DiagnosticSeverity.Error
@@ -352,23 +351,39 @@ function applyDiagnostics(warnings: DiffMindWarning[], workspacePath: string) {
                 ? vscode.DiagnosticSeverity.Warning
                 : vscode.DiagnosticSeverity.Information;
 
-        const range = new vscode.Range(0, 0, 0, 100);
+        const range = new vscode.Range(0, 0, 0, 200);
 
         const diag = new vscode.Diagnostic(
             range,
             `[DiffMind ${w.risk_level}] ${Math.round(w.similarity * 100)}% similar to ` +
-            `${w.past_commit}: ${w.past_message}`,
+            `past commit ${w.past_commit}: "${w.past_message}" (file: ${w.past_file})`,
             severity
         );
         diag.source = 'DiffMind';
         diag.code = w.is_bugfix ? 'bugfix-pattern' : 'similar-pattern';
 
-        fileMap.get(key)!.push(diag);
+        allDiags.push({ uri: vscode.Uri.file(filePath), diag });
+        outputChannel.appendLine(`[DIAG] ${w.risk_level}: ${filePath} (${Math.round(w.similarity * 100)}%)`);
     }
 
-    for (const [filePath, diags] of fileMap) {
-        diagnosticCollection.set(vscode.Uri.file(filePath), diags);
+    // Group by file URI
+    const grouped = new Map<string, { uri: vscode.Uri; diags: vscode.Diagnostic[] }>();
+    for (const entry of allDiags) {
+        const key = entry.uri.toString();
+        if (!grouped.has(key)) {
+            grouped.set(key, { uri: entry.uri, diags: [] });
+        }
+        grouped.get(key)!.diags.push(entry.diag);
     }
+
+    // Set diagnostics
+    for (const [, entry] of grouped) {
+        diagnosticCollection.set(entry.uri, entry.diags);
+    }
+
+    // Also show in Output panel for visibility
+    outputChannel.appendLine(`[DIAG] Applied ${allDiags.length} diagnostics to ${grouped.size} files`);
+    outputChannel.show(true);  // Show Output panel so user can see results
 }
 
 // ── WebView Panels ───────────────────────────────────────────────
