@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "diffmind"
+version = "0.1.0"
+description = "AI Code Review Memory - learns from your team's bug history"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "wjddusrb03" },
+]
+keywords = ["code-review", "git", "semantic-search", "bug-detection", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = [
+    "langchain-turboquant",
+    "sentence-transformers",
+    "click",
+    "numpy",
+]
+
+[project.scripts]
+diffmind = "diffmind.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/wjddusrb03/diffmind"
+Repository = "https://github.com/wjddusrb03/diffmind"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diffmind"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
