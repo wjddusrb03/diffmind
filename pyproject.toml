@@ -28,6 +28,26 @@ dependencies = [
     "numpy",
 ]
 
+[project.optional-dependencies]
+connect = [
+    "anthropic>=0.30.0",
+    "openai>=1.30.0",
+    "httpx>=0.27.0",
+    "PyGithub>=2.3.0",
+    "pyyaml>=6.0",
+]
+llm = ["anthropic>=0.30.0", "openai>=1.30.0"]
+github = ["PyGithub>=2.3.0"]
+slack = ["httpx>=0.27.0"]
+discord = ["httpx>=0.27.0"]
+all = [
+    "anthropic>=0.30.0",
+    "openai>=1.30.0",
+    "httpx>=0.27.0",
+    "PyGithub>=2.3.0",
+    "pyyaml>=6.0",
+]
+
 [project.scripts]
 diffmind = "diffmind.cli:main"
 

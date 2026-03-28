@@ -108,6 +108,96 @@ def display_search_results(results: List[SearchResult]) -> str:
     return "\n".join(lines)
 
 
+def display_ai_review(report) -> str:
+    """Format AI review report for terminal output."""
+    from .models import ReviewReport
+
+    lines = []
+    lines.append(_separator("="))
+    lines.append("  DiffMind AI Review Report")
+    lines.append(f"  Provider: {report.provider} ({report.model_used})")
+    lines.append(f"  Warnings analyzed: {report.total_warnings_analyzed}")
+    lines.append(f"  False positives: {report.false_positives}")
+    lines.append(f"  Overall risk: {report.overall_risk}")
+    lines.append(_separator("="))
+    lines.append("")
+
+    if not report.comments:
+        lines.append("[OK] No warnings to analyze.")
+        return "\n".join(lines)
+
+    risk_mark = {
+        "HIGH": "[!!!]",
+        "MEDIUM": "[!!]",
+        "LOW": "[!]",
+        "FALSE_POSITIVE": "[OK]",
+    }
+
+    for c in report.comments:
+        mark = risk_mark.get(c.risk_level, "[?]")
+        lines.append(f"{mark} {c.risk_level}: {c.file_path}")
+        if c.line_range:
+            lines.append(f"  Lines: {c.line_range}")
+        lines.append(f"  Past bug: {c.past_bug_reference}")
+        lines.append(f"  Confidence: {c.confidence:.0%}")
+        lines.append("")
+        lines.append(f"  Summary: {c.summary}")
+        lines.append("")
+
+        if c.explanation:
+            lines.append(f"  Explanation:")
+            for el in c.explanation.split("\n"):
+                lines.append(f"    {el}")
+            lines.append("")
+
+        if c.suggestion:
+            lines.append(f"  Suggestion: {c.suggestion}")
+            lines.append("")
+
+        if c.suggested_code:
+            lines.append("  Suggested fix:")
+            for sl in c.suggested_code.split("\n"):
+                lines.append(f"    {sl}")
+            lines.append("")
+
+        lines.append(_separator("-"))
+        lines.append("")
+
+    # Overall summary
+    lines.append("  Overall Summary:")
+    for sl in report.summary.split("\n"):
+        lines.append(f"    {sl}")
+
+    return "\n".join(lines)
+
+
+def display_ai_review_json(report) -> str:
+    """Format AI review report as JSON."""
+    data = {
+        "provider": report.provider,
+        "model": report.model_used,
+        "overall_risk": report.overall_risk,
+        "total_warnings": report.total_warnings_analyzed,
+        "false_positives": report.false_positives,
+        "summary": report.summary,
+        "comments": [
+            {
+                "file": c.file_path,
+                "line_range": c.line_range,
+                "risk_level": c.risk_level,
+                "summary": c.summary,
+                "explanation": c.explanation,
+                "suggestion": c.suggestion,
+                "suggested_code": c.suggested_code,
+                "past_bug": c.past_bug_reference,
+                "confidence": round(c.confidence, 2),
+            }
+            for c in report.comments
+        ],
+    }
+    return json.dumps(data, indent=2, ensure_ascii=False)
+
+
 def display_stats(index: DiffMindIndex) -> str:
     """Format index statistics."""
     lines = []

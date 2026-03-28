@@ -224,5 +224,251 @@ def install(pre_commit, github_action, fail_on, path):
         print(f"[OK] GitHub Action generated at {action_path}")
 
 
+# ── Connect subcommands ────────────────────────────────────────────
+
+@main.group()
+def connect():
+    """DiffMind Connect - LLM review, GitHub, Slack, Discord integrations.
+
+    \b
+    Examples:
+        diffmind connect ai-review --staged
+        diffmind connect github --pr 42
+        diffmind connect slack --test
+        diffmind connect init
+    """
+    pass
+
+
+@connect.command("init")
+@click.option("--path", default=".", help="Repository path")
+def connect_init(path):
+    """Generate default .diffmind/config.yml configuration."""
+    from .connect.config import generate_default_config
+
+    config_path = generate_default_config(path)
+    print(f"[OK] Config generated at {config_path}")
+    print("  Edit the file to set your API keys and preferences.")
+
+
+@connect.command("ai-review")
+@click.option("--staged", is_flag=True, help="Only review staged changes")
+@click.option("--threshold", default=0.75, type=float, help="Similarity threshold")
+@click.option("-k", default=3, type=int, help="Max warnings per hunk")
+@click.option("--provider", default="claude",
+              type=click.Choice(["claude", "openai", "ollama"]),
+              help="LLM provider")
+@click.option("--model", default="", help="Model name (auto-selected if empty)")
+@click.option("--lang", default="en", type=click.Choice(["en", "ko"]),
+              help="Output language")
+@click.option("--json", "as_json", is_flag=True, help="JSON output")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None, help="Exit with code 1 if risk >= level")
+@click.option("--path", default=".", help="Repository path")
+def ai_review(staged, threshold, k, provider, model, lang, as_json, fail_on, path):
+    """AI-powered review: LLM analyzes DiffMind warnings.
+
+    Combines DiffMind's bug pattern detection with LLM analysis
+    to provide detailed code review comments with fix suggestions.
+
+    \b
+    Examples:
+        diffmind connect ai-review --staged
+        diffmind connect ai-review --provider openai --lang ko
+        diffmind connect ai-review --json --fail-on high
+    """
+    from .connect.config import load_config
+    from .connect.llm import LLMReviewer
+    from .display import display_ai_review, display_ai_review_json
+    from .parser import parse_current_diff
+    from .reviewer import review as do_review
+    from .storage import load_index
+
+    try:
+        index = load_index(path)
+    except FileNotFoundError as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+    current_hunks = parse_current_diff(path, staged=staged)
+    if not current_hunks:
+        print("No changes to review.")
+        return
+
+    warnings = do_review(
+        index, repo_path=path, staged=staged,
+        threshold=threshold, top_k=k, hunks=current_hunks,
+    )
+
+    if not warnings:
+        print("No similar bug patterns found. Skipping AI analysis.")
+        return
+
+    # Load config and create LLM reviewer
+    config = load_config(path)
+    config.llm.provider = provider
+    if model:
+        config.llm.model = model
+    config.llm.language = lang
+
+    try:
+        reviewer = LLMReviewer(config=config)
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize LLM: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Analyzing {len(warnings)} warnings with {provider}...")
+    report = reviewer.analyze_all(warnings)
+
+    if as_json:
+        print(display_ai_review_json(report))
+    else:
+        print(display_ai_review(report))
+
+    # Exit code for CI
+    if fail_on and report.overall_risk != "CLEAN":
+        levels = {"high": 3, "medium": 2, "low": 1}
+        fail_level = levels.get(fail_on, 0)
+        risk_level = levels.get(report.overall_risk.lower(), 0)
+        if risk_level >= fail_level:
+            sys.exit(1)
+
+
+@connect.command("github")
+@click.option("--pr", "pr_number", required=True, type=int, help="PR number")
+@click.option("--staged", is_flag=True, help="Only review staged changes")
+@click.option("--threshold", default=0.75, type=float, help="Similarity threshold")
+@click.option("--provider", default="claude",
+              type=click.Choice(["claude", "openai", "ollama"]),
+              help="LLM provider")
+@click.option("--fail-on", default="high",
+              type=click.Choice(["high", "medium", "low"]))
+@click.option("--path", default=".", help="Repository path")
+def github_review(pr_number, staged, threshold, provider, fail_on, path):
+    """Post AI review on a GitHub PR.
+
+    \b
+    Examples:
+        diffmind connect github --pr 42
+        diffmind connect github --pr 42 --provider openai
+    """
+    from .connect.config import load_config
+    from .connect.github_bot import GitHubBot
+    from .connect.llm import LLMReviewer
+    from .parser import parse_current_diff
+    from .reviewer import review as do_review
+    from .storage import load_index
+
+    try:
+        index = load_index(path)
+    except FileNotFoundError as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+    current_hunks = parse_current_diff(path, staged=staged)
+    if not current_hunks:
+        print("No changes to review.")
+        return
+
+    warnings = do_review(
+        index, repo_path=path, staged=staged,
+        threshold=threshold, hunks=current_hunks,
+    )
+
+    config = load_config(path)
+    config.llm.provider = provider
+
+    try:
+        reviewer = LLMReviewer(config=config)
+        report = reviewer.analyze_all(warnings)
+    except Exception as e:
+        print(f"[ERROR] LLM analysis failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        bot = GitHubBot(config=config.github)
+        url = bot.post_review(pr_number, report)
+        print(f"[OK] Review posted: {url}")
+    except Exception as e:
+        print(f"[ERROR] GitHub posting failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+@connect.command("slack")
+@click.option("--test", "test_mode", is_flag=True, help="Send test message")
+@click.option("--webhook", default="", help="Slack webhook URL")
+@click.option("--path", default=".", help="Repository path")
+def slack_notify(test_mode, webhook, path):
+    """Send alerts to Slack.
+
+    \b
+    Examples:
+        diffmind connect slack --test --webhook https://hooks.slack.com/...
+        diffmind connect slack --test
+    """
+    from .connect.config import load_config
+    from .connect.slack import SlackNotifier
+
+    config = load_config(path)
+    url = webhook or config.slack.webhook_url
+    if not url:
+        print("[ERROR] Slack webhook URL required. "
+              "Use --webhook or set in .diffmind/config.yml", file=sys.stderr)
+        sys.exit(1)
+
+    config.slack.webhook_url = url
+
+    try:
+        notifier = SlackNotifier(config=config.slack)
+        if test_mode:
+            ok = notifier.send_test()
+            if ok:
+                print("[OK] Test message sent to Slack.")
+            else:
+                print("[ERROR] Failed to send test message.", file=sys.stderr)
+                sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+@connect.command("discord")
+@click.option("--test", "test_mode", is_flag=True, help="Send test message")
+@click.option("--webhook", default="", help="Discord webhook URL")
+@click.option("--path", default=".", help="Repository path")
+def discord_notify(test_mode, webhook, path):
+    """Send alerts to Discord.
+
+    \b
+    Examples:
+        diffmind connect discord --test --webhook https://discord.com/api/webhooks/...
+        diffmind connect discord --test
+    """
+    from .connect.config import load_config
+    from .connect.discord import DiscordNotifier
+
+    config = load_config(path)
+    url = webhook or config.discord.webhook_url
+    if not url:
+        print("[ERROR] Discord webhook URL required. "
+              "Use --webhook or set in .diffmind/config.yml", file=sys.stderr)
+        sys.exit(1)
+
+    config.discord.webhook_url = url
+
+    try:
+        notifier = DiscordNotifier(config=config.discord)
+        if test_mode:
+            ok = notifier.send_test()
+            if ok:
+                print("[OK] Test message sent to Discord.")
+            else:
+                print("[ERROR] Failed to send test message.", file=sys.stderr)
+                sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

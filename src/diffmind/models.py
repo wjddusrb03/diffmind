@@ -62,6 +62,43 @@ class ReviewWarning:
 
 
 @dataclass
+class ReviewComment:
+    """AI-generated review comment for a single warning."""
+
+    file_path: str
+    line_range: str
+    risk_level: str  # "HIGH", "MEDIUM", "LOW", "FALSE_POSITIVE"
+    summary: str
+    explanation: str
+    suggestion: str
+    suggested_code: str
+    past_bug_reference: str
+    confidence: float  # 0.0 ~ 1.0
+
+    @property
+    def risk_emoji(self) -> str:
+        return {
+            "HIGH": "\U0001f534",
+            "MEDIUM": "\U0001f7e1",
+            "LOW": "\U0001f7e2",
+            "FALSE_POSITIVE": "\u2705",
+        }.get(self.risk_level, "")
+
+
+@dataclass
+class ReviewReport:
+    """Aggregated AI review report."""
+
+    comments: List[ReviewComment]
+    overall_risk: str  # "HIGH", "MEDIUM", "LOW", "CLEAN"
+    summary: str
+    provider: str  # "claude", "openai", "ollama"
+    model_used: str
+    total_warnings_analyzed: int
+    false_positives: int = 0
+
+
+@dataclass
 class DiffMindIndex:
     """The learned index containing compressed embeddings of past diffs."""
 
