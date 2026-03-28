@@ -89,7 +89,7 @@ def review(
 
         # Asymmetric scoring via TurboQuant (no decompression)
         scores = index.quantizer.cosine_scores(query_vec, index.compressed)
-        score_array = np.array(scores[0])
+        score_array = np.array(scores).flatten()
 
         # Get top-k above threshold
         top_indices = np.argsort(score_array)[::-1]

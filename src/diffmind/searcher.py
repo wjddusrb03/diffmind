@@ -60,7 +60,7 @@ def search(
 
     # Asymmetric scoring
     scores = index.quantizer.cosine_scores(query_vec, index.compressed)
-    score_array = np.array(scores[0], dtype=np.float64)
+    score_array = np.array(scores, dtype=np.float64).flatten()
 
     # Apply filters
     for i, hunk in enumerate(index.hunks):

@@ -93,8 +93,8 @@ def learn(
             "Try: pip install langchain-turboquant"
         )
 
-    quantizer = TurboQuantizer(bits=bits)
-    compressed = quantizer.fit_transform(embeddings)
+    quantizer = TurboQuantizer(dim=embedding_dim, bits=bits)
+    compressed = quantizer.quantize(embeddings)
     compressed_bytes = sys.getsizeof(compressed)
 
     # 5. Gather metadata
@@ -170,14 +170,15 @@ def incremental_learn(
     new_embeddings = model.encode(new_texts, show_progress_bar=True)
 
     # 3. Reconstruct old embeddings and combine
-    old_embeddings = index.quantizer.inverse_transform(index.compressed)
+    old_embeddings = index.quantizer.dequantize(index.compressed)
     all_embeddings = np.vstack([old_embeddings, new_embeddings])
 
     # 4. Re-compress
     from langchain_turboquant import TurboQuantizer
     bits = getattr(index.quantizer, "bits", 3)
-    quantizer = TurboQuantizer(bits=bits)
-    compressed = quantizer.fit_transform(all_embeddings)
+    dim = all_embeddings.shape[1]
+    quantizer = TurboQuantizer(dim=dim, bits=bits)
+    compressed = quantizer.quantize(all_embeddings)
 
     # 5. Update index
     all_hunks = index.hunks + new_hunks
