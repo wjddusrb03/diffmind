@@ -1,0 +1,173 @@
+{
+  "name": "diffmind",
+  "displayName": "DiffMind - AI Code Review Memory",
+  "description": "Learns from your team's bug history and warns when similar patterns appear. Powered by TurboQuant + LLM.",
+  "version": "0.1.0",
+  "publisher": "wjddusrb03",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wjddusrb03/diffmind"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "code-review",
+    "bug-detection",
+    "git",
+    "ai",
+    "semantic-search"
+  ],
+  "activationEvents": [
+    "workspaceContains:.git"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "diffmind.learn",
+        "title": "DiffMind: Learn Repository History",
+        "icon": "$(database)"
+      },
+      {
+        "command": "diffmind.review",
+        "title": "DiffMind: Review Current Changes",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "diffmind.reviewStaged",
+        "title": "DiffMind: Review Staged Changes",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "diffmind.aiReview",
+        "title": "DiffMind: AI Review (LLM Analysis)",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "diffmind.search",
+        "title": "DiffMind: Search Bug History",
+        "icon": "$(search)"
+      },
+      {
+        "command": "diffmind.stats",
+        "title": "DiffMind: Show Statistics",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "diffmind.toggleAutoReview",
+        "title": "DiffMind: Toggle Auto-Review on Save",
+        "icon": "$(eye)"
+      }
+    ],
+    "configuration": {
+      "title": "DiffMind",
+      "properties": {
+        "diffmind.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to Python interpreter with DiffMind installed"
+        },
+        "diffmind.autoReviewOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically review changes when a file is saved"
+        },
+        "diffmind.threshold": {
+          "type": "number",
+          "default": 0.75,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Similarity threshold for warnings (0-1)"
+        },
+        "diffmind.aiProvider": {
+          "type": "string",
+          "enum": ["claude", "openai", "ollama"],
+          "default": "claude",
+          "description": "LLM provider for AI review"
+        },
+        "diffmind.aiLanguage": {
+          "type": "string",
+          "enum": ["en", "ko"],
+          "default": "en",
+          "description": "Language for AI review output"
+        },
+        "diffmind.maxWarningsPerHunk": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum number of warnings per code hunk"
+        },
+        "diffmind.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show DiffMind status in the status bar"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "diffmind.review",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "diffmind.aiReview",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "diffmind.search",
+        "key": "ctrl+shift+f6",
+        "mac": "cmd+shift+f6"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "diffmind.review",
+          "group": "diffmind@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "diffmind.aiReview",
+          "group": "diffmind@2",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "diffmind.search",
+          "group": "diffmind@3",
+          "when": "editorTextFocus"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "diffmind.reviewStaged",
+          "group": "navigation",
+          "when": "scmProvider == git"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
